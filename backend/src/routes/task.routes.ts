@@ -727,10 +727,11 @@ router.patch('/:id/status', authenticateToken, async (req: AuthRequest, res: Res
 
     // If not found in tasks, try sheet_tasks
     const sheetTaskCheck = await query(
-      `SELECT st.id, st.is_absolute, w.organization_id, om.role as org_role FROM sheet_tasks st
+      `SELECT st.id, st.is_absolute, COALESCE(w.organization_id, p.organization_id) as organization_id, om.role as org_role FROM sheet_tasks st
        INNER JOIN synced_sheets ss ON st.synced_sheet_id = ss.id
-       INNER JOIN workspaces w ON ss.workspace_id = w.id
-       INNER JOIN organization_members om ON w.organization_id = om.organization_id
+       LEFT JOIN workspaces w ON ss.workspace_id = w.id
+       LEFT JOIN projects p ON ss.project_id = p.id
+       INNER JOIN organization_members om ON COALESCE(w.organization_id, p.organization_id) = om.organization_id
        WHERE st.id = $1 AND om.user_id = $2 AND om.status = $3`,
       [id, userId, 'active']
     );
@@ -872,10 +873,11 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res: Response) 
 
     // 2. Try finding in sheet_tasks Table
     const sheetTaskCheck = await query(
-      `SELECT st.*, om.role as org_role, ss.workspace_id FROM sheet_tasks st
+      `SELECT st.*, COALESCE(w.organization_id, p.organization_id) as organization_id, om.role as org_role, ss.workspace_id FROM sheet_tasks st
        INNER JOIN synced_sheets ss ON st.synced_sheet_id = ss.id
-       INNER JOIN workspaces w ON ss.workspace_id = w.id
-       INNER JOIN organization_members om ON w.organization_id = om.organization_id
+       LEFT JOIN workspaces w ON ss.workspace_id = w.id
+       LEFT JOIN projects p ON ss.project_id = p.id
+       INNER JOIN organization_members om ON COALESCE(w.organization_id, p.organization_id) = om.organization_id
        WHERE st.id = $1 AND om.user_id = $2 AND om.status = $3`,
       [id, userId, 'active']
     );

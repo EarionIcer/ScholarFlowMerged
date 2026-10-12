@@ -32,7 +32,7 @@ router.get('/list', async (req, res) => {
 
         const response = await drive.files.list({
             pageSize: 200,
-            q: `mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
+            q: `(mimeType='application/vnd.google-apps.spreadsheet' or mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') and trashed=false`,
             fields: 'files(id, name, mimeType, size, modifiedTime, webViewLink, iconLink, thumbnailLink, owners)',
             orderBy: 'modifiedTime desc',
         });
