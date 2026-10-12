@@ -1601,7 +1601,6 @@ async function runMigrations(): Promise<void> {
         -- task_id, matching how sheet_tasks are referenced throughout the app.
         ALTER TABLE task_assignees DROP CONSTRAINT IF EXISTS task_assignees_task_id_fkey;
       `
-<<<<<<< HEAD
     },
     {
       name: '062_drop_task_id_fk_from_followers_and_notifications',
@@ -1643,8 +1642,6 @@ async function runMigrations(): Promise<void> {
         ON synced_sheets(workspace_id, sheet_id)
         WHERE team_id IS NULL;
       `
-=======
->>>>>>> ed02f8f77c7f9a65c9ae8064978c80f51ef1fc66
     }
   ];
 
