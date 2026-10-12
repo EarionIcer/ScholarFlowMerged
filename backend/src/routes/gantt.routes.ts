@@ -27,22 +27,47 @@ router.get('/projects/:projectId/gantt', authenticateToken, async (req: AuthRequ
       params.push(priority);
     }
 
+    let sheetWhereClause = 'WHERE st.project_id = $1';
+    const sheetParams: any[] = [projectId];
+    let sheetParamCount = 1;
+
+    if (priority) {
+      sheetParamCount++;
+      sheetWhereClause += ` AND st.priority = $${sheetParamCount}`;
+      sheetParams.push(priority);
+    }
+
     const [tasksResult, depsResult, membersResult] = await Promise.all([
       query(
-        `SELECT t.id, t.title, t.status, t.priority, t.wbs_code,
-                t.start_date, t.due_date,
-                COALESCE(t.progress_percent, 0) AS progress,
-                t.estimated_hours, t.assigned_to, t.parent_task_id,
-                ARRAY_REMOVE(ARRAY[u.name], NULL) AS assignee_names
-         FROM tasks t
-         LEFT JOIN users u ON u.id = t.assigned_to
-         ${whereClause}
+        `SELECT id, title, status, priority, wbs_code, start_date, due_date,
+                progress, estimated_hours, assigned_to, parent_task_id, assignee_names
+         FROM (
+           SELECT t.id, t.title, t.status, t.priority, t.wbs_code,
+                  t.start_date, t.due_date,
+                  COALESCE(t.progress_percent, 0) AS progress,
+                  t.estimated_hours, t.assigned_to, t.parent_task_id,
+                  ARRAY_REMOVE(ARRAY[u.name], NULL) AS assignee_names
+           FROM tasks t
+           LEFT JOIN users u ON u.id = t.assigned_to
+           ${whereClause}
+
+           UNION ALL
+
+           SELECT st.id, st.title, st.status, st.priority, st.wbs_code,
+                  st.start_date, st.due_date,
+                  COALESCE(st.progress_percent, 0) AS progress,
+                  NULL::integer AS estimated_hours,
+                  NULL::uuid AS assigned_to,
+                  st.parent_task_id,
+                  ARRAY_REMOVE(ARRAY[st.assignee_email], NULL) AS assignee_names
+           FROM sheet_tasks st
+           ${sheetWhereClause}
+         ) combined
          ORDER BY
-           -- Sort WBS codes numerically (handles 1,2,...9,10 correctly instead of 1,10,2,3)
-           CASE WHEN t.wbs_code ~ '^\d+$' THEN t.wbs_code::integer ELSE NULL END NULLS LAST,
-           t.wbs_code NULLS LAST,
-           t.created_at`,
-        params
+           CASE WHEN wbs_code ~ '^\\d+$' THEN wbs_code::integer ELSE NULL END NULLS LAST,
+           wbs_code NULLS LAST,
+           id`,
+        [...params, ...sheetParams]
       ),
       query(
         `SELECT td.task_id, td.depends_on_task_id, td.dependency_type

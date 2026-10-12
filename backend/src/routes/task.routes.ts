@@ -588,6 +588,27 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         [title, description, priority, due_date, is_absolute, wbs_code, complexity_weight, id]
       );
 
+      // Sync assignees to task_assignees table (same logic as regular tasks)
+      if (assigned_to_ids && Array.isArray(assigned_to_ids)) {
+        if (assigned_to_ids.length === 0) {
+          await query(`DELETE FROM task_assignees WHERE task_id = $1`, [id]);
+        } else {
+          await query(
+            `DELETE FROM task_assignees WHERE task_id = $1 AND user_id != ALL($2::uuid[])`,
+            [id, assigned_to_ids]
+          );
+          for (const assigneeId of assigned_to_ids) {
+            if (!assigneeId) continue;
+            await query(
+              `INSERT INTO task_assignees (task_id, user_id, assigned_by)
+               VALUES ($1, $2, $3)
+               ON CONFLICT (task_id, user_id) DO NOTHING`,
+              [id, assigneeId, userId]
+            );
+          }
+        }
+      }
+
       const syncSvc = new WorkspaceSyncService();
       for (const [field, value] of Object.entries({ title, description, priority, due_date })) {
         if (value !== undefined && value !== null) {
