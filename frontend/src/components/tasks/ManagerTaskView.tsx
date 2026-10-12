@@ -1154,6 +1154,7 @@ export default function ManagerTaskView({ user, organization, initialProjectId =
         organizationId={organization.id}
         onImportComplete={() => fetchTasks()}
         teamId={selectedTeam}
+        projectId={selectedProjectId}
       />
 
       {/* Dependency Dialog */}

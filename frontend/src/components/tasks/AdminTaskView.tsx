@@ -1223,6 +1223,7 @@ export default function AdminTaskView({ user, organization, initialProjectId = n
         organizationId={organization.id}
         onImportComplete={() => fetchTasks()}
         teamId={selectedTeam}
+        projectId={selectedProjectId}
       />
 
       {/* Dependency Dialog */}

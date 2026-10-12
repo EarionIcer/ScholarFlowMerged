@@ -28,6 +28,7 @@ interface GoogleSheetImportModalProps {
     organizationId: string
     onImportComplete: () => void
     teamId?: string | null
+    projectId?: string | null
 }
 
 interface PreviewTask {
@@ -45,7 +46,7 @@ interface PreviewData {
 }
 
 export default function GoogleSheetImportModal({
-    isOpen, onClose, organizationId, onImportComplete, teamId
+    isOpen, onClose, organizationId, onImportComplete, teamId, projectId
 }: GoogleSheetImportModalProps) {
     const [step, setStep] = useState<'select' | 'preview' | 'syncing' | 'done'>('select')
     const [syncMode, setSyncMode] = useState<'browse' | 'url'>('url')
@@ -152,7 +153,8 @@ export default function GoogleSheetImportModal({
             await apiClient.post(`/workspaces/${workspaceId}/connect-sheet`, {
                 sheetId: selectedSheet.id,
                 sheetName: selectedSheet.name,
-                teamId: teamId || undefined
+                teamId: teamId || undefined,
+                projectId: projectId || undefined
             })
             setStep('done')
         } catch (err: any) {

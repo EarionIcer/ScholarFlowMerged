@@ -1223,6 +1223,77 @@ router.get('/:id/following', authenticateToken, async (req: AuthRequest, res: Re
 });
 
 /**
+ * GET /api/tasks/:id/activity
+ * Returns task details + activity log + comments — used by TaskTimeline component
+ */
+router.get('/:id/activity', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    // Try regular tasks first
+    let taskResult = await query(
+      `SELECT t.*, p.name as project_name, u.name as assigned_to_name
+       FROM tasks t
+       INNER JOIN projects p ON t.project_id = p.id
+       INNER JOIN organization_members om ON p.organization_id = om.organization_id
+       LEFT JOIN users u ON t.assigned_to = u.id
+       WHERE t.id = $1 AND om.user_id = $2 AND om.status = 'active'`,
+      [id, userId]
+    );
+
+    // Fallback: sheet_tasks
+    if (taskResult.rows.length === 0) {
+      taskResult = await query(
+        `SELECT st.*, COALESCE(w.organization_id, p2.organization_id) as organization_id
+         FROM sheet_tasks st
+         INNER JOIN synced_sheets ss ON st.synced_sheet_id = ss.id
+         LEFT JOIN workspaces w ON ss.workspace_id = w.id
+         LEFT JOIN projects p2 ON ss.project_id = p2.id
+         INNER JOIN organization_members om ON COALESCE(w.organization_id, p2.organization_id) = om.organization_id
+         WHERE st.id = $1 AND om.user_id = $2 AND om.status = 'active'`,
+        [id, userId]
+      );
+    }
+
+    if (taskResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found or access denied' });
+    }
+
+    const task = taskResult.rows[0];
+
+    // Activity log (best-effort — returns [] if table missing the row)
+    const activityResult = await query(
+      `SELECT al.*, u.name as user_name
+       FROM activity_log al
+       LEFT JOIN users u ON al.user_id = u.id
+       WHERE al.entity_id = $1
+       ORDER BY al.created_at ASC`,
+      [id]
+    ).catch(() => ({ rows: [] }));
+
+    // Comments
+    const commentsResult = await query(
+      `SELECT tc.*, u.name as user_name, u.profile_picture
+       FROM task_comments tc
+       LEFT JOIN users u ON tc.user_id = u.id
+       WHERE tc.task_id = $1
+       ORDER BY tc.created_at ASC`,
+      [id]
+    );
+
+    return res.json({
+      task,
+      activities: activityResult.rows,
+      comments: commentsResult.rows,
+    });
+  } catch (error) {
+    logger.error('Error fetching task activity:', error);
+    res.status(500).json({ error: 'Failed to fetch task activity' });
+  }
+});
+
+/**
  * GET /api/tasks/:id/assignees
  * Get all assignees for a task
  */
