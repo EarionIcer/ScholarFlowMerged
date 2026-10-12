@@ -12,7 +12,9 @@ router.get('/projects/:projectId/gantt', authenticateToken, async (req: AuthRequ
     const { projectId } = req.params;
     const { assignee, priority } = req.query;
 
+    // Build shared params for the UNION ALL — both branches reference the same $N positions
     let whereClause = 'WHERE t.project_id = $1';
+    let sheetWhereClause = 'WHERE st.project_id = $1';
     const params: any[] = [projectId];
     let paramCount = 1;
 
@@ -20,21 +22,13 @@ router.get('/projects/:projectId/gantt', authenticateToken, async (req: AuthRequ
       paramCount++;
       whereClause += ` AND t.assigned_to = $${paramCount}`;
       params.push(assignee);
+      // Sheet tasks don't have a UUID assignee column, so no sheet filter for assignee
     }
     if (priority) {
       paramCount++;
       whereClause += ` AND t.priority = $${paramCount}`;
+      sheetWhereClause += ` AND st.priority = $${paramCount}`;
       params.push(priority);
-    }
-
-    let sheetWhereClause = 'WHERE st.project_id = $1';
-    const sheetParams: any[] = [projectId];
-    let sheetParamCount = 1;
-
-    if (priority) {
-      sheetParamCount++;
-      sheetWhereClause += ` AND st.priority = $${sheetParamCount}`;
-      sheetParams.push(priority);
     }
 
     const [tasksResult, depsResult, membersResult] = await Promise.all([
@@ -67,7 +61,7 @@ router.get('/projects/:projectId/gantt', authenticateToken, async (req: AuthRequ
            CASE WHEN wbs_code ~ '^\\d+$' THEN wbs_code::integer ELSE NULL END NULLS LAST,
            wbs_code NULLS LAST,
            id`,
-        [...params, ...sheetParams]
+        params
       ),
       query(
         `SELECT td.task_id, td.depends_on_task_id, td.dependency_type
