@@ -456,10 +456,12 @@ export default function ManagerTaskView({ user, organization, initialProjectId =
         // grid too — otherwise edits to an archived task appear to have no effect.
         if (isArchiveExpanded) fetchArchivedTasks(0, false)
       } else {
-        console.error('Failed to update task')
+        const errData = await response.json().catch(() => ({}))
+        alert(`Failed to save task: ${errData.error || response.status}`)
       }
     } catch (error) {
       console.error('Error updating task:', error)
+      alert('Failed to save task. Please try again.')
     }
   }
 
