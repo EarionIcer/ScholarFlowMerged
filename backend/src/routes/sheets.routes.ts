@@ -31,7 +31,7 @@ router.get('/list', async (req, res) => {
         const { drive } = getGoogleClients(access_token, refresh_token);
 
         const response = await drive.files.list({
-            pageSize: 50,
+            pageSize: 200,
             q: `mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,
             fields: 'files(id, name, mimeType, size, modifiedTime, webViewLink, iconLink, thumbnailLink, owners)',
             orderBy: 'modifiedTime desc',
