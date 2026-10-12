@@ -357,8 +357,8 @@ export class WorkspaceSyncService {
             progress_percent, luxury_weight, synced_at, updated_at
           )
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
-           ON CONFLICT(synced_sheet_id, sheet_row_index) 
-          DO UPDATE SET 
+           ON CONFLICT(synced_sheet_id, sheet_row_index)
+          DO UPDATE SET
             title = EXCLUDED.title,
             description = EXCLUDED.description,
             status = EXCLUDED.status,
@@ -368,6 +368,7 @@ export class WorkspaceSyncService {
             start_date = EXCLUDED.start_date,
             wbs_code = EXCLUDED.wbs_code,
             parent_task_id = EXCLUDED.parent_task_id,
+            project_id = EXCLUDED.project_id,
             team_id = EXCLUDED.team_id,
             complexity_weight = EXCLUDED.complexity_weight,
             is_absolute = EXCLUDED.is_absolute,
@@ -493,21 +494,46 @@ export class WorkspaceSyncService {
     // Auto-detect column mapping
     const columnMapping = await this.detectColumnMapping(userId, sheetId);
 
-    // Insert synced sheet
-    const result = await query(
-      `INSERT INTO synced_sheets (workspace_id, sheet_id, sheet_name, column_mapping, project_id, team_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (team_id, sheet_id) DO UPDATE SET 
-         sheet_name = EXCLUDED.sheet_name,
-         column_mapping = EXCLUDED.column_mapping,
-         project_id = EXCLUDED.project_id,
-         workspace_id = EXCLUDED.workspace_id,
-         updated_at = NOW()
-       RETURNING id`,
-      [workspaceId, sheetId, sheetName, JSON.stringify(columnMapping), projectId, teamId]
-    );
+    // Upsert synced sheet — two different conflict paths depending on whether team_id is set
+    let syncedSheetId: string;
 
-    const syncedSheetId = result.rows[0].id;
+    if (teamId) {
+      // Team-based: conflict on (team_id, sheet_id)
+      const result = await query(
+        `INSERT INTO synced_sheets (workspace_id, sheet_id, sheet_name, column_mapping, project_id, team_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (team_id, sheet_id) DO UPDATE SET
+           sheet_name = EXCLUDED.sheet_name,
+           column_mapping = EXCLUDED.column_mapping,
+           project_id = EXCLUDED.project_id,
+           workspace_id = EXCLUDED.workspace_id,
+           updated_at = NOW()
+         RETURNING id`,
+        [workspaceId, sheetId, sheetName, JSON.stringify(columnMapping), projectId, teamId]
+      );
+      syncedSheetId = result.rows[0].id;
+    } else {
+      // Project-based (no team): deduplicate on (workspace_id, sheet_id) manually
+      const existing = await query(
+        `SELECT id FROM synced_sheets WHERE workspace_id = $1 AND sheet_id = $2 AND team_id IS NULL`,
+        [workspaceId, sheetId]
+      );
+      if (existing.rows.length > 0) {
+        syncedSheetId = existing.rows[0].id;
+        await query(
+          `UPDATE synced_sheets SET sheet_name = $1, column_mapping = $2, project_id = $3, updated_at = NOW() WHERE id = $4`,
+          [sheetName, JSON.stringify(columnMapping), projectId || null, syncedSheetId]
+        );
+      } else {
+        const result = await query(
+          `INSERT INTO synced_sheets (workspace_id, sheet_id, sheet_name, column_mapping, project_id, team_id)
+           VALUES ($1, $2, $3, $4, $5, NULL)
+           RETURNING id`,
+          [workspaceId, sheetId, sheetName, JSON.stringify(columnMapping), projectId || null]
+        );
+        syncedSheetId = result.rows[0].id;
+      }
+    }
 
     // Initial sync
     await this.syncSheet(syncedSheetId);

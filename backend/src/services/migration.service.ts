@@ -1601,6 +1601,50 @@ async function runMigrations(): Promise<void> {
         -- task_id, matching how sheet_tasks are referenced throughout the app.
         ALTER TABLE task_assignees DROP CONSTRAINT IF EXISTS task_assignees_task_id_fkey;
       `
+<<<<<<< HEAD
+    },
+    {
+      name: '062_drop_task_id_fk_from_followers_and_notifications',
+      sql: `
+        -- task_followers.task_id and notifications.task_id both REFERENCE tasks(id).
+        -- When a sheet_task UUID is used as task_id (e.g. assigning a member or
+        -- posting a comment on a sheet task), these FK constraints cause HTTP 500.
+        -- Drop them so any UUID works, matching the intent of sheet_tasks support.
+        ALTER TABLE task_followers DROP CONSTRAINT IF EXISTS task_followers_task_id_fkey;
+        ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_task_id_fkey;
+      `
+    },
+    {
+      name: '063_deduplicate_synced_sheets_no_team',
+      sql: `
+        -- Migration 028 dropped UNIQUE(workspace_id, sheet_id) and kept only
+        -- UNIQUE(team_id, sheet_id). When team_id IS NULL, PostgreSQL treats
+        -- (NULL, 'sheetX') as distinct from every other (NULL, 'sheetX') — NULLs
+        -- are never equal in unique constraints — so the same sheet imported
+        -- multiple times creates duplicate synced_sheets rows, each spawning their
+        -- own sheet_tasks rows, causing duplicates in the task list.
+        --
+        -- Fix: keep the most-recently-created row per (workspace_id, sheet_id)
+        -- where team_id IS NULL, then add a partial unique index to prevent
+        -- future duplicates without touching the team-based uniqueness rule.
+
+        -- 1. Delete older duplicate rows (cascade deletes their sheet_tasks)
+        DELETE FROM synced_sheets
+        WHERE team_id IS NULL
+          AND id NOT IN (
+            SELECT DISTINCT ON (workspace_id, sheet_id) id
+            FROM synced_sheets
+            WHERE team_id IS NULL
+            ORDER BY workspace_id, sheet_id, created_at DESC NULLS LAST
+          );
+
+        -- 2. Partial unique index: one (workspace_id, sheet_id) per NULL-team sheet
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_synced_sheets_ws_sheet_no_team
+        ON synced_sheets(workspace_id, sheet_id)
+        WHERE team_id IS NULL;
+      `
+=======
+>>>>>>> ed02f8f77c7f9a65c9ae8064978c80f51ef1fc66
     }
   ];
 
