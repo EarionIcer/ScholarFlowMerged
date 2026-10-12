@@ -181,7 +181,7 @@ router.post('/redeem', authenticateToken, async (req: AuthRequest, res: Response
       [jc.organization_id, userId, jc.role]
     );
 
-    // Auto-add to project if the code has one linked
+    // Auto-add to project and assign to all its tasks if the code has a project linked
     if (jc.project_id) {
       const projectRole = jc.role === 'manager' ? 'lead' : 'member';
       await query(
@@ -191,6 +191,21 @@ router.post('/redeem', authenticateToken, async (req: AuthRequest, res: Response
         [jc.project_id, userId, projectRole]
       );
       logger.info(`User ${userId} auto-added to project ${jc.project_id} as ${projectRole} via join code`);
+
+      // Assign to every task (regular and sheet) in the project
+      await query(
+        `INSERT INTO task_assignees (task_id, user_id, assigned_by)
+         SELECT id, $2, $3 FROM tasks WHERE project_id = $1
+         ON CONFLICT (task_id, user_id) DO NOTHING`,
+        [jc.project_id, userId, userId]
+      );
+      await query(
+        `INSERT INTO task_assignees (task_id, user_id, assigned_by)
+         SELECT id, $2, $3 FROM sheet_tasks WHERE project_id = $1
+         ON CONFLICT (task_id, user_id) DO NOTHING`,
+        [jc.project_id, userId, userId]
+      );
+      logger.info(`User ${userId} auto-assigned to all tasks in project ${jc.project_id} via join code`);
     }
 
     // Increment use count; deactivate if max reached
