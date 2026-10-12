@@ -13,29 +13,29 @@ services:
       - key: PORT
         value: 5000
       - key: DATABASE_URL
-        sync: false # Set this in Render dashboard (Supabase URL)
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://api.wildcatinnovationlabs.com/api/auth/google/callback
+        value: https://scholarflow-api-i6zl.onrender.com/api/auth/google/callback
       - key: FRONTEND_URL
-        value: https://scholarflow.wildcatinnovationlabs.com
+        value: https://scholarflow-web-b8ut.onrender.com
       - key: JWT_SECRET
-        generateValue: true # Generates a random secret automatically
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: BACKEND_URL
-        value: https://api.wildcatinnovationlabs.com
+        value: https://scholarflow-api-i6zl.onrender.com
       - key: MS365_CLIENT_ID
         sync: false
       - key: MS365_CLIENT_SECRET
         sync: false
       - key: MS365_TENANT_ID
-        value: common # Change to your Azure tenant ID if using a single-tenant app registration
+        value: common
 
   # 2. Frontend Service
   - type: web
@@ -47,6 +47,6 @@ services:
     startCommand: npm run start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://api.wildcatinnovationlabs.com
+        value: https://scholarflow-api-i6zl.onrender.com
       - key: PORT
         value: 3000
