@@ -480,7 +480,10 @@ router.get('/:id/tasks', authenticateToken, async (req: AuthRequest, res: Respon
       if (orgRole === 'member') {
         visibilityFilter = `AND (t.assigned_to = $${meIdx}
            OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $${meIdx}))`;
-        visibilityFilterSheet = `AND ($${emailIdx}::text IS NOT NULL AND LOWER(st.assignee_email) = LOWER($${emailIdx}))`;
+        visibilityFilterSheet = `AND (
+           ($${emailIdx}::text IS NOT NULL AND LOWER(st.assignee_email) = LOWER($${emailIdx}))
+           OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = st.id AND ta.user_id = $${meIdx})
+        )`;
       } else {
         // Projects the manager is tied to: created, a member of, or linked to their teams.
         const myProjects = `SELECT id FROM projects WHERE created_by = $${meIdx}
@@ -575,8 +578,8 @@ router.get('/:id/tasks', authenticateToken, async (req: AuthRequest, res: Respon
       queryParams
     );
 
-    // Attach assignees from junction table to each app task
-    const taskIds = result.rows.filter(t => t.source_type === 'app').map((t: any) => t.id);
+    // Attach assignees from junction table to all tasks (app and sheet)
+    const taskIds = result.rows.map((t: any) => t.id);
     if (taskIds.length > 0) {
       const assigneesResult = await query(
         `SELECT ta.task_id, ta.user_id, u.name, u.email, u.profile_picture
