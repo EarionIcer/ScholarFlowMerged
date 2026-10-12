@@ -422,7 +422,49 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Task not found or access denied' });
+      // Fallback: try sheet_tasks (handles NULL workspace_id via project path)
+      const sheetResult = await query(
+        `SELECT st.*,
+                COALESCE(w.organization_id, p2.organization_id) as organization_id,
+                om.role as org_role,
+                p2.name as project_name
+         FROM sheet_tasks st
+         INNER JOIN synced_sheets ss ON st.synced_sheet_id = ss.id
+         LEFT JOIN workspaces w ON ss.workspace_id = w.id
+         LEFT JOIN projects p2 ON ss.project_id = p2.id
+         INNER JOIN organization_members om ON COALESCE(w.organization_id, p2.organization_id) = om.organization_id
+         WHERE st.id = $1 AND om.user_id = $2 AND om.status = $3`,
+        [id, userId, 'active']
+      );
+
+      if (sheetResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Task not found or access denied' });
+      }
+
+      const sheetComments = await query(
+        `SELECT tc.*, u.name as user_name, u.profile_picture
+         FROM task_comments tc
+         LEFT JOIN users u ON tc.user_id = u.id
+         WHERE tc.task_id = $1
+         ORDER BY tc.created_at DESC`,
+        [id]
+      );
+
+      const sheetAssignees = await query(
+        `SELECT ta.user_id, u.name, u.email, u.profile_picture, ta.assigned_at
+         FROM task_assignees ta
+         JOIN users u ON ta.user_id = u.id
+         WHERE ta.task_id = $1
+         ORDER BY ta.assigned_at ASC`,
+        [id]
+      );
+
+      return res.json({
+        ...sheetResult.rows[0],
+        subtasks: [],
+        comments: sheetComments.rows,
+        assignees: sheetAssignees.rows,
+      });
     }
 
     // Get subtasks
@@ -1220,13 +1262,26 @@ router.post('/:id/assignees', authenticateToken, async (req: AuthRequest, res: R
     }
 
     // Check if user is admin or manager in the organization
-    const roleCheck = await query(
+    let roleCheck = await query(
       `SELECT om.role, t.title FROM tasks t
        INNER JOIN projects p ON t.project_id = p.id
        INNER JOIN organization_members om ON p.organization_id = om.organization_id
        WHERE t.id = $1 AND om.user_id = $2 AND om.status = 'active'`,
       [id, userId]
     );
+
+    if (roleCheck.rows.length === 0) {
+      // Fallback: check sheet_tasks
+      roleCheck = await query(
+        `SELECT om.role, st.title FROM sheet_tasks st
+         INNER JOIN synced_sheets ss ON st.synced_sheet_id = ss.id
+         LEFT JOIN workspaces w ON ss.workspace_id = w.id
+         LEFT JOIN projects p2 ON ss.project_id = p2.id
+         INNER JOIN organization_members om ON COALESCE(w.organization_id, p2.organization_id) = om.organization_id
+         WHERE st.id = $1 AND om.user_id = $2 AND om.status = 'active'`,
+        [id, userId]
+      );
+    }
 
     if (roleCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied' });
@@ -1289,13 +1344,25 @@ router.delete('/:id/assignees/:assigneeId', authenticateToken, async (req: AuthR
     const userId = req.user!.id;
 
     // Check if user is admin or manager in the organization
-    const roleCheck = await query(
+    let roleCheck = await query(
       `SELECT om.role FROM tasks t
        INNER JOIN projects p ON t.project_id = p.id
        INNER JOIN organization_members om ON p.organization_id = om.organization_id
        WHERE t.id = $1 AND om.user_id = $2 AND om.status = 'active'`,
       [id, userId]
     );
+
+    if (roleCheck.rows.length === 0) {
+      roleCheck = await query(
+        `SELECT om.role FROM sheet_tasks st
+         INNER JOIN synced_sheets ss ON st.synced_sheet_id = ss.id
+         LEFT JOIN workspaces w ON ss.workspace_id = w.id
+         LEFT JOIN projects p2 ON ss.project_id = p2.id
+         INNER JOIN organization_members om ON COALESCE(w.organization_id, p2.organization_id) = om.organization_id
+         WHERE st.id = $1 AND om.user_id = $2 AND om.status = 'active'`,
+        [id, userId]
+      );
+    }
 
     if (roleCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied' });
