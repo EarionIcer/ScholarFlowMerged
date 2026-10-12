@@ -1591,6 +1591,16 @@ async function runMigrations(): Promise<void> {
       sql: `
         ALTER TABLE org_join_codes ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL;
       `
+    },
+    {
+      name: '061_task_assignees_drop_tasks_fk',
+      sql: `
+        -- task_assignees.task_id was FK-constrained to tasks(id), so inserting an
+        -- assignee for a sheet_task (whose id lives in sheet_tasks, not tasks) caused
+        -- a FK violation → HTTP 500. Drop the constraint so any UUID can be used as
+        -- task_id, matching how sheet_tasks are referenced throughout the app.
+        ALTER TABLE task_assignees DROP CONSTRAINT IF EXISTS task_assignees_task_id_fkey;
+      `
     }
   ];
 
